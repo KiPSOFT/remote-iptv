@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -23,13 +23,18 @@ interface Props {
 }
 
 export default function XtreamSettingsDialog({ open, onClose, onSave, initialSettings }: Props) {
-  const [settings, setSettings] = useState<XtreamSettings>(
-    initialSettings || {
-      url: '',
-      username: '',
-      password: '',
+  const [settings, setSettings] = useState<XtreamSettings>({
+    url: '',
+    username: '',
+    password: '',
+  });
+
+  useEffect(() => {
+    if (initialSettings) {
+      console.log('Loading initial settings:', initialSettings);
+      setSettings(initialSettings);
     }
-  );
+  }, [initialSettings, open]);
 
   const handleSave = () => {
     onSave(settings);

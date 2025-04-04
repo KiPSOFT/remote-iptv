@@ -25,6 +25,13 @@ import {
   InputAdornment,
   Menu,
   MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
+  Link,
+  useTheme,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -42,6 +49,9 @@ import {
   Refresh as RefreshIcon,
   Search as SearchIcon,
   Sort as SortIcon,
+  DarkMode as DarkModeIcon,
+  LightMode as LightModeIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import XtreamSettingsDialog from './components/XtreamSettingsDialog';
@@ -95,6 +105,9 @@ function App() {
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'rating'>('newest');
   const [mpvStatus, setMpvStatus] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [darkMode, setDarkMode] = useState(localStorage.getItem('darkMode') === 'true');
+  const [aboutDialogOpen, setAboutDialogOpen] = useState(false);
+  const theme = useTheme();
 
   const checkMpvStatus = useCallback(async () => {
     try {
@@ -126,8 +139,15 @@ function App() {
     const fetchSettings = async () => {
       try {
         const response = await axios.get('/api/xtream/settings');
-        setXtreamSettings(response.data);
+        console.log('Xtream settings response:', response.data);
+        if (response.data && (typeof response.data === 'object' && (response.data.url || response.data.username || response.data.password))) {
+          setXtreamSettings(response.data);
+        } else {
+          console.log('Xtream settings empty or invalid, opening settings dialog');
+          setSettingsOpen(true);
+        }
       } catch (error: any) {
+        console.error('Error fetching xtream settings:', error);
         if (error.response?.status === 404) {
           setSettingsOpen(true);
         }
@@ -161,17 +181,29 @@ function App() {
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
-      setFilteredChannels(channels);
-    } else if (searchQuery.trim().length >= 3) {
+      // Arama temizlendiğinde, eğer bir kategori seçiliyse o kategorinin kanallarını göster
+      // Aksi halde boş bir liste göster
+      if (selectedCategory) {
+        setFilteredChannels(channels);
+        setChannels(channels); // Filtrelenmiş kanalları sıfırla
+      } else {
+        setFilteredChannels([]);
+      }
+    } else if (searchQuery.trim().length >= 2) {
+      // Bütün kanallar içinde ara
       const filtered = allChannels.filter(channel =>
         channel.name.toLowerCase().includes(searchQuery.toLowerCase())
       );
       setFilteredChannels(filtered);
+      
+      // Arama sonuçlarını görüntüle
+      if (filtered.length > 0) {
+        setChannels(filtered);
+      }
     } else {
-      // For 1-2 characters, keep showing the current channel list
       setFilteredChannels(channels);
     }
-  }, [searchQuery, channels, allChannels]);
+  }, [searchQuery, channels, allChannels, selectedCategory]);
 
   const fetchCategories = async () => {
     try {
@@ -217,7 +249,10 @@ function App() {
   };
 
   const getCategoriesByType = (type: string) => {
-    return categories.filter(cat => cat.type === type);
+    // Kategorileri alfabetik olarak sırala
+    return categories
+      .filter(cat => cat.type === type)
+      .sort((a, b) => a.category_name.localeCompare(b.category_name));
   };
 
   const getCategoryType = (categoryId: number): string => {
@@ -434,6 +469,22 @@ function App() {
     }
   };
 
+  const handleFavoritesClick = async () => {
+    try {
+      setSelectedCategory('favorites');
+      setLoading(true);
+      const response = await axios.get('/api/favorites');
+      console.log('Fetched favorites:', response.data);
+      setChannels(response.data || []);
+    } catch (error) {
+      console.error('Error fetching favorites:', error);
+      setError('Favoriler yüklenirken bir hata oluştu.');
+      setChannels([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const drawer = (
     <div>
       <Toolbar />
@@ -448,10 +499,10 @@ function App() {
         </ListItem>
 
         <ListItem disablePadding>
-          <ListItemButton onClick={() => {
-            setSelectedCategory('favorites');
-            fetchFavorites();
-          }}>
+          <ListItemButton 
+            onClick={handleFavoritesClick}
+            selected={selectedCategory === 'favorites'}
+          >
             <ListItemIcon>
               <Favorite />
             </ListItemIcon>
@@ -641,6 +692,85 @@ function App() {
       );
     }
 
+    // Arama yapılıyorsa ve henüz bir kategori seçilmemişse
+    if (searchQuery.trim().length >= 2 && !selectedCategory) {
+      const filteredResults = allChannels.filter(channel => 
+        channel.name.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      
+      if (filteredResults.length === 0) {
+        return (
+          <Alert severity="info">
+            Arama sonucu bulunamadı.
+          </Alert>
+        );
+      }
+      
+      return (
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 2, p: 2 }}>
+          {filteredResults.map((channel) => (
+            // channel kartı
+            <Card key={channel.id} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <CardContent sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+                {channel.stream_icon && (
+                  <Box
+                    component="img"
+                    src={channel.stream_icon}
+                    alt={channel.name}
+                    sx={{
+                      width: '100%',
+                      height: 120,
+                      objectFit: 'contain',
+                      mb: 1,
+                      loading: 'lazy'
+                    }}
+                    loading="lazy"
+                  />
+                )}
+                <Typography
+                  gutterBottom
+                  variant="subtitle1"
+                  component="div"
+                  sx={{
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    display: '-webkit-box',
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: 'vertical',
+                    minHeight: '3em'
+                  }}
+                >
+                  {channel.name}
+                </Typography>
+                {channel.rating && (
+                  <Typography variant="body2" color="text.secondary">
+                    IMDB: {channel.rating}
+                  </Typography>
+                )}
+              </CardContent>
+              <CardActions sx={{ display: 'flex', flexDirection: 'row', justifyContent: 'space-between', px: 2, pb: 1 }}>
+                <Button
+                  size="small"
+                  color="primary"
+                  onClick={() => handlePlayChannel(channel)}
+                  startIcon={<PlayArrow />}
+                >
+                  Oynat
+                </Button>
+                <Button
+                  size="small"
+                  onClick={() => handleToggleFavorite(channel)}
+                  startIcon={favorites.some(f => f.url === channel.url) ? <Star /> : <StarBorder />}
+                >
+                  {favorites.some(f => f.url === channel.url) ? 'Çıkar' : 'Ekle'}
+                </Button>
+              </CardActions>
+            </Card>
+          ))}
+        </Box>
+      );
+    }
+
     if (!channels || channels.length === 0) {
       return (
         <Alert severity="info">
@@ -756,6 +886,26 @@ function App() {
     );
   };
 
+  const handleThemeToggle = () => {
+    const newDarkMode = !darkMode;
+    setDarkMode(newDarkMode);
+    localStorage.setItem('darkMode', newDarkMode.toString());
+    
+    // Dispatch a custom event to notify index.tsx about the theme change
+    window.dispatchEvent(new CustomEvent('darkModeChange'));
+    
+    // Force theme change in the UI
+    document.documentElement.style.setProperty('color-scheme', newDarkMode ? 'dark' : 'light');
+  };
+
+  const handleAboutOpen = () => {
+    setAboutDialogOpen(true);
+  };
+
+  const handleAboutClose = () => {
+    setAboutDialogOpen(false);
+  };
+
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <CssBaseline />
@@ -792,43 +942,50 @@ function App() {
           >
             <MenuIcon />
           </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 0 }}>
-            IPTV Player
+          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
+            Remote IPTV Player
           </Typography>
           <Box sx={{ flexGrow: 1, mx: 2 }}>
-            <TextField
-              size="small"
-              placeholder="Kanal Ara..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              sx={{
-                backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                borderRadius: 1,
-                '& .MuiOutlinedInput-root': {
-                  color: 'white',
-                  '& fieldset': {
-                    borderColor: 'transparent',
-                  },
-                  '&:hover fieldset': {
-                    borderColor: 'rgba(255, 255, 255, 0.3)',
-                  },
-                  '&.Mui-focused fieldset': {
-                    borderColor: 'rgba(255, 255, 255, 0.5)',
-                  },
-                },
-                '& .MuiInputBase-input::placeholder': {
-                  color: 'rgba(255, 255, 255, 0.7)',
-                },
-              }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon sx={{ color: 'rgba(255, 255, 255, 0.7)' }} />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Box>
+             <TextField
+               size="small"
+               placeholder="Kanal Ara..."
+               value={searchQuery}
+               onChange={(e) => setSearchQuery(e.target.value)}
+               sx={{
+                 width: { xs: '100%', sm: '300px', md: '400px' },
+                 backgroundColor: 'rgba(255, 255, 255, 0.15)',
+                 borderRadius: 1,
+                 '& .MuiOutlinedInput-root': {
+                   color: 'white',
+                   '& fieldset': {
+                     borderColor: 'transparent',
+                   },
+                   '&:hover fieldset': {
+                     borderColor: 'rgba(255, 255, 255, 0.3)',
+                   },
+                   '&.Mui-focused fieldset': {
+                     borderColor: 'rgba(255, 255, 255, 0.5)',
+                   },
+                 },
+                 '& .MuiInputBase-input::placeholder': {
+                   color: 'rgba(255, 255, 255, 0.7)',
+                 },
+               }}
+               InputProps={{
+                 startAdornment: (
+                   <InputAdornment position="start">
+                     <SearchIcon sx={{ color: 'rgba(255, 255, 255, 0.7)' }} />
+                   </InputAdornment>
+                 ),
+               }}
+             />
+           </Box>
+          <IconButton color="inherit" onClick={handleThemeToggle}>
+            {darkMode ? <LightModeIcon /> : <DarkModeIcon />}
+          </IconButton>
+          <IconButton color="inherit" onClick={handleAboutOpen}>
+            <InfoIcon />
+          </IconButton>
           <IconButton color="inherit" onClick={() => setSettingsOpen(true)}>
             <SettingsIcon />
           </IconButton>
@@ -901,15 +1058,15 @@ function App() {
                 </Box>
               )}
 
-              {!selectedCategory && !loading && (
+              {!selectedCategory && !searchQuery.trim() && !loading && (
                 <Box sx={{ textAlign: 'center', my: 4 }}>
                   <Typography variant="h6" color="textSecondary">
-                    Lütfen yandan bir kategori seçin
+                    Lütfen yandan bir kategori seçin veya arama yapın
                   </Typography>
                 </Box>
               )}
 
-              {selectedCategory && renderChannelList()}
+              {renderChannelList()}
             </>
           )}
         </Container>
@@ -920,6 +1077,27 @@ function App() {
         onSave={handleSaveSettings}
         initialSettings={xtreamSettings || undefined}
       />
+      <Dialog open={aboutDialogOpen} onClose={handleAboutClose}>
+        <DialogTitle>Hakkında</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            <Typography paragraph>
+              by Serkan KOCAMAN & AI
+            </Typography>
+            <Link 
+              href="https://github.com/KiPSOFT" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              color="primary"
+            >
+              github.com/KiPSOFT
+            </Link>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleAboutClose}>Kapat</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

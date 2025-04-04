@@ -21,7 +21,12 @@ func main() {
 	defer player.Cleanup()
 
 	// Database setup
-	database, err := db.NewDatabase("iptv.db")
+	dbPath := "iptv.db"
+	if os.Getenv("PWD") != "" {
+		dbPath = filepath.Join(os.Getenv("PWD"), "data", "iptv.db")
+	}
+	log.Printf("Database path: %s\n", dbPath)
+	database, err := db.NewDatabase(dbPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
@@ -34,8 +39,15 @@ func main() {
 	r := mux.NewRouter()
 	handler.RegisterRoutes(r)
 
+	// Determine static files location
+	staticPath := "web/build"
+	if webRoot := os.Getenv("WEB_ROOT"); webRoot != "" {
+		staticPath = webRoot
+		log.Printf("Using web root from environment: %s\n", staticPath)
+	}
+
 	// Static file server for web UI
-	spa := spaHandler{staticPath: "web/build", indexPath: "index.html"}
+	spa := spaHandler{staticPath: staticPath, indexPath: "index.html"}
 	r.PathPrefix("/").Handler(spa)
 
 	// Start server
@@ -45,6 +57,7 @@ func main() {
 	}
 
 	log.Printf("Server starting on port %s...\n", port)
+	log.Printf("Static files served from: %s\n", staticPath)
 	if err := http.ListenAndServe(":"+port, r); err != nil {
 		log.Fatal(err)
 	}
