@@ -1,0 +1,103 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# IPTV Web Kontrollü Sistem - Teknik Kurallar
+
+## 1. Proje Tanımı
+Bu proje, web tabanlı bir IPTV kontrol sistemidir. Kullanıcılar herhangi bir masaüstü uygulama kurmadan, web arayüzü üzerinden IPTV kanallarını yönetebilir. 
+
+Proje, **Go** programlama dili ile geliştirilecek ve **MPV medya oynatıcısı** kullanarak IPTV akışlarını oynatacaktır. Sistem, **Xtream Codes API** ile kanal listelerini alabilecek ve favori kanalları **SQLite** veritabanında saklayabilecektir. Kullanıcılar kanal değiştirme, durdurma ve oynatılan kanal bilgilerini görme gibi işlemleri web tabanlı bir **React** UI aracılığıyla gerçekleştirebilecektir.
+
+---
+
+## 2. Genel Mimari
+- **Backend**: Go ile geliştirilecek, yerleşik HTTP sunucusu kullanılacak.
+- **Medya Oynatıcı**: MPV JSON IPC ile kontrol edilecek.
+- **Web UI**: React tabanlı olacak ve Go tarafından sağlanan REST API ile çalışacaktır.
+- **Veritabanı**: SQLite, favori kanalları saklamak için kullanılacak.
+- **Kanal Listesi**: Xtream Codes API desteği olacak.
+- **M3U Desteği**: M3U formatı kolayca parse edilebilecek.
+
+---
+
+## 3. Teknik Kurallar
+
+### 3.1 MPV Entegrasyonu
+- MPV, Go tarafından **JSON IPC** ile kontrol edilecek.
+- Kanal oynatma, değiştirme ve durdurma gibi komutlar MPV’ye JSON RPC formatında gönderilecek.
+- Oynatılan kanal bilgisi Web UI’ye API aracılığıyla sunulacak.
+
+**MPV JSON IPC Komutları:**
+```json
+{"command": ["loadfile", "http://kanal-linki.m3u8", "replace"]}  // Kanal oynatma
+{"command": ["get_property", "media-title"]}  // Oynatılan kanal bilgisi alma
+```
+
+---
+
+### 3.2 Web API (Go HTTP Server)
+- API, **Go'nun net/http paketi** ile geliştirilecek.
+- Kullanılacak API endpoint'leri:
+  - `GET /channels` → Mevcut kanal listesini getirir.
+  - `POST /play` → Belirtilen kanalı oynatır.
+  - `POST /stop` → Oynatmayı durdurur.
+  - `POST /favorite` → Kanalı favorilere ekler.
+  - `GET /favorite` → Favori kanalları getirir.
+
+---
+
+### 3.3 Xtream Codes Desteği
+- Kullanıcı bilgileri ile **Xtream Codes API**'ye bağlanılacak.
+- Kanal listesi ve kategorileri alınacak ve JSON formatına çevrilecek.
+- API isteği örneği:
+```go
+xtreamURL := "http://xtreamcodes.com/get.php?username=USER&password=PASS&type=m3u_plus"
+res, _ := http.Get(xtreamURL)
+data, _ := io.ReadAll(res.Body)
+m3u := string(data)
+```
+
+---
+
+### 3.4 SQLite ile Favori Kanal Saklama
+- Favori kanallar SQLite veritabanında tutulacak.
+- Kullanılacak veritabanı tablosu:
+```sql
+CREATE TABLE favorites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    channel_name TEXT,
+    channel_url TEXT
+);
+```
+- Go ile favori kanal ekleme:
+```go
+db.Exec("INSERT INTO favorites (channel_name, channel_url) VALUES (?, ?)", name, url)
+```
+
+---
+
+### 3.5 M3U Parser Kullanımı
+- M3U dosyalarını parse etmek için `github.com/grafov/m3u8` kütüphanesi kullanılacak.
+- Örnek M3U parser kodu:
+```go
+playlist, _ := m3u8.DecodeFrom(strings.NewReader(m3uData), true)
+for _, item := range playlist.(*m3u8.MediaPlaylist).Segments {
+    fmt.Println("Kanal Adı:", item.Title, "URL:", item.URI)
+}
+```
+
+---
+
+## 4. Sistem Gereksinimleri
+- **Go (1.21+)**
+- **MPV (JSON IPC etkinleştirilmeli)**
+- **React (Web UI için)**
+- **SQLite (Favori kanallar için)**
+- **Xtream Codes API (Kanal verileri için)**
+- **M3U8 parser (Kolay kanal listesi işleme için)**
+
+---
+
+Bu kurallar doğrultusunda, hafif ve hızlı bir IPTV kontrol sistemi geliştirilebilir. 🚀
