@@ -56,10 +56,10 @@ func NewClient(baseURL, username, password string) *Client {
 		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			MaxIdleConns:        10,
-			IdleConnTimeout:     120 * time.Second,
+			IdleConnTimeout:     240 * time.Second,
 			DisableCompression:  true,
 			DisableKeepAlives:   false,
-			MaxIdleConnsPerHost: 2,
+			MaxIdleConnsPerHost: 3,
 		},
 	}
 
