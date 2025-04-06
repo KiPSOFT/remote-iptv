@@ -53,7 +53,7 @@ func (c *Category) GetID() (int, error) {
 
 func NewClient(baseURL, username, password string) *Client {
 	client := &http.Client{
-		Timeout: 30 * time.Second,
+		Timeout: 120 * time.Second,
 		Transport: &http.Transport{
 			MaxIdleConns:        10,
 			IdleConnTimeout:     240 * time.Second,
