@@ -4,62 +4,18 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
-	"syscall"
 
 	"github.com/gorilla/mux"
 	"remote-iptv/internal/api"
 	"remote-iptv/internal/db"
 	"remote-iptv/internal/player"
 
-	"github.com/getlantern/systray"
-	"github.com/skratchdot/open-golang/open"
 
 )
 
 func main() {
-	systray.Run(onReady, onExit)
-}
-
-func onReady() {
-	systray.SetTitle("Remote IPTV")
-	systray.SetTooltip("Remote IPTV Control")
-
-	// Set icon (should be added to the data directory)
-	icon, err := os.ReadFile("/usr/share/remoteiptv/data/icon.png")
-	if err == nil {
-		systray.SetIcon(icon)
-	}
-
-	// Menu items
-	mOpen := systray.AddMenuItem("Open IPTV Interface", "Open the web interface")
-	systray.AddSeparator()
-	mQuit := systray.AddMenuItem("Quit", "Exit the application")
-
-	go func() {
-		runServer()
-	}()
-
-	go func() {
-		for {
-			select {
-			case <-mOpen.ClickedCh:
-				open.Run("http://localhost:8080")
-			case <-mQuit.ClickedCh:
-				// Programı sonlandır ve systray'i kapat
-				sigs := make(chan os.Signal, 1)
-				signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-				sigs <- syscall.SIGTERM
-				systray.Quit()
-				return
-			}
-		}
-	}()
-}
-
-func onExit() {
-	
+	runServer()
 }
 
 func runServer() {
