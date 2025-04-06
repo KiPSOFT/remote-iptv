@@ -99,6 +99,24 @@ func sendToMPVSocket(socketPath string, command string) ([]byte, error) {
 	return buf[:n], nil
 }
 
+// checkHDMIAudio checks if HDMI audio device is available
+func checkHDMIAudio() bool {
+	// Try aplay -l first
+	cmd := exec.Command("aplay", "-l")
+	output, err := cmd.Output()
+	if err == nil && strings.Contains(string(output), "HDMI") {
+		return true
+	}
+
+	// If aplay fails, check /proc/asound/cards
+	data, err := os.ReadFile("/proc/asound/cards")
+	if err == nil && strings.Contains(string(data), "HDMI") {
+		return true
+	}
+
+	return false
+}
+
 func NewMPVPlayer() (*MPVPlayer, error) {
 	// Geçici dizin oluştur
 	socketDir, err := os.MkdirTemp("", "mpv-socket-*")
@@ -190,12 +208,22 @@ func (p *MPVPlayer) Play(url string) error {
 		log.Printf("Starting MPV with URL: %s", url)
 		log.Printf("Debug logs will be saved to: %s", logFile)
 
+		// Determine audio device
+		audioDevice := "auto"
+		if checkHDMIAudio() {
+			audioDevice = "alsa/hdmi"
+			log.Printf("HDMI audio device detected, using alsa/hdmi")
+		} else {
+			log.Printf("No HDMI audio device detected, using auto")
+		}
+
 		args := []string{
 			"--no-config",
 			"--terminal=no",
 			"--msg-level=all=debug",
 			"--log-file=" + logFile,
 			"--vo=gpu",
+			"--audio-device=" + audioDevice,
 			"--cache=yes",
 			"--cache-secs=60",
 			"--demuxer-max-bytes=500M",
