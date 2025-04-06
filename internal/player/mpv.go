@@ -29,6 +29,11 @@ type MPVPlayer struct {
 	
 	// Control channel for the worker
 	done         chan struct{}
+
+	// New fields for auto-restart
+	currentURL   string
+	autoRestart  bool
+	manualStop   bool
 }
 
 type MPVCommand struct {
@@ -106,13 +111,15 @@ func NewMPVPlayer() (*MPVPlayer, error) {
 	socketPath := socketDir + "/" + socketID
 
 	player := &MPVPlayer{
-		socketDir:  socketDir,
-		socketID:   socketID,
-		socketPath: socketPath,
-		isActive:   false,
-		commandCh:  make(chan func(), 10),  // Buffer for commands
-		stateCh:    make(chan bool, 1),     // Channel for state updates
-		done:       make(chan struct{}),    // Channel to signal worker shutdown
+		socketDir:   socketDir,
+		socketID:    socketID,
+		socketPath:  socketPath,
+		isActive:    false,
+		commandCh:   make(chan func(), 10),  // Buffer for commands
+		stateCh:     make(chan bool, 1),     // Channel for state updates
+		done:        make(chan struct{}),    // Channel to signal worker shutdown
+		autoRestart: true,                   // Enable auto-restart by default
+		manualStop:  false,                  // Initialize manual stop flag
 	}
 	
 	// Start the worker goroutine
@@ -140,6 +147,9 @@ func (p *MPVPlayer) Play(url string) error {
 	
 	// Queue the play command
 	p.commandCh <- func() {
+		p.currentURL = url    // Store current URL
+		p.manualStop = false  // Reset manual stop flag
+		
 		// Check if MPV is already running and active
 		if p.isActive && p.cmd != nil && p.cmd.Process != nil {
 			// MPV is running, try to use loadfile to change the URL instead of restarting
@@ -186,7 +196,9 @@ func (p *MPVPlayer) Play(url string) error {
 			"--msg-level=all=debug",
 			"--log-file=" + logFile,
 			"--audio-channels=stereo",
-			"--ao=pulse,alsa,coreaudio,",
+			"--ao=pulse,alsa,coreaudio",
+			"--volume=100",
+			"--audio-device=auto",
 			"--vo=gpu",
 			"--cache=yes",
 			"--cache-secs=60",
@@ -259,6 +271,13 @@ func (p *MPVPlayer) Play(url string) error {
 			
 			// Update state in thread-safe manner
 			p.stateCh <- false
+
+			// Auto-restart logic if not manually stopped
+			if p.autoRestart && !p.manualStop && p.currentURL != "" {
+				log.Printf("Auto-restarting MPV with URL: %s", p.currentURL)
+				time.Sleep(1 * time.Second) // Small delay before restart
+				p.Play(p.currentURL)
+			}
 		}()
 
 		log.Printf("MPV started with PID: %d", p.cmd.Process.Pid)
@@ -320,6 +339,7 @@ func (p *MPVPlayer) Stop() error {
 	
 	// Queue the stop command
 	p.commandCh <- func() {
+		p.manualStop = true  // Set manual stop flag
 		p.doStop(resultCh)
 	}
 	
